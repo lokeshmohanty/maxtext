@@ -28,10 +28,44 @@ import re
 from typing import Any
 
 _NON_EMPTY = re.compile(r"\S")
+# Default maxtext solution tags (tmvp_config.solution_start/end_token). The
+# model emits its final answer inside <answer>...</answer>, so match against
+# that span rather than the whole completion (which is full reasoning).
+_ANSWER_TAG = re.compile(r"<answer>(.*?)</answer>", re.DOTALL | re.IGNORECASE)
 
 
-def _normalize(text: str) -> str:
-    return (text or "").strip().lower()
+def _to_list(value: Any) -> list[Any]:
+    """Coerce maxtext's ``answer`` kwarg to a plain list.
+
+    During eval it may arrive as a scalar/None; during training it arrives as
+    a numpy array (a batch). ``array or []`` raises "truth value of an array is
+    ambiguous", so normalize explicitly.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes)):
+        return [value]
+    if hasattr(value, "tolist"):  # numpy array / jax array
+        value = value.tolist()
+    try:
+        return list(value)
+    except TypeError:
+        return [value]
+
+
+def _normalize(text: Any) -> str:
+    if text is None:
+        return ""
+    if isinstance(text, bytes):
+        text = text.decode("utf-8", "replace")
+    return str(text).strip().lower().replace(",", "")
+
+
+def _extract_answer(completion: Any) -> str:
+    """Return the last <answer>...</answer> span, or the whole completion."""
+    text = "" if completion is None else str(completion)
+    matches = _ANSWER_TAG.findall(text)
+    return matches[-1] if matches else text
 
 
 def dsdg_local_reward(
@@ -42,12 +76,13 @@ def dsdg_local_reward(
     **kwargs: Any,
 ) -> list[float]:
     """0.1 for non-empty output + 1.0 for a normalized answer match."""
-    answers = answer or []
+    answers = _to_list(answer)
     rewards: list[float] = []
     for index, completion in enumerate(completions):
-        fmt = 0.1 if _NON_EMPTY.search(completion or "") else 0.0
+        fmt = 0.1 if _NON_EMPTY.search(str(completion or "")) else 0.0
         expected = _normalize(answers[index]) if index < len(answers) else ""
-        match = 1.0 if expected and _normalize(completion) == expected else 0.0
+        got = _normalize(_extract_answer(completion))
+        match = 1.0 if expected and got == expected else 0.0
         rewards.append(match + fmt)
     return rewards
 
@@ -66,7 +101,7 @@ def dsdg_env_reward(
     import httpx  # deferred: only the env-server variant needs it
 
     score_url = os.environ["DSDG_ENV_SCORE_URL"]
-    answers = answer or []
+    answers = _to_list(answer)
     rewards: list[float] = []
     with httpx.Client(timeout=30.0) as client:
         for index, completion in enumerate(completions):
