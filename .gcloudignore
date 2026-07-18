@@ -1,0 +1,10 @@
+.git/
+.venv/
+.gitnexus/
+.claude/
+.pi/
+.vscode/
+.github/
+**/__pycache__/
+**/*.pyc
+*.sync-conflict-*

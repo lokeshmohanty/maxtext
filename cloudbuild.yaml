@@ -1,0 +1,34 @@
+steps:
+  # 1. Base image: MaxText TPU post-training dependencies.
+  - name: 'gcr.io/cloud-builders/docker'
+    id: deps
+    env: ['DOCKER_BUILDKIT=1']
+    args:
+      - build
+      - --build-arg=DEVICE=tpu
+      - --build-arg=WORKFLOW=post-training
+      - --build-arg=MODE=stable
+      - --build-arg=JAX_VERSION=NONE
+      - --build-arg=PACKAGE_DIR=src
+      - --build-arg=INCLUDE_TEST_ASSETS=false
+      - --build-arg=LIBTPU_VERSION=NONE
+      - -f=src/dependencies/dockerfiles/maxtext_tpu_dependencies.Dockerfile
+      - -t=maxtext_base_image
+      - .
+  # 2. Runner image: copy MaxText source (incl. dsdg reward module) onto the base.
+  - name: 'gcr.io/cloud-builders/docker'
+    id: runner
+    env: ['DOCKER_BUILDKIT=1']
+    args:
+      - build
+      - --build-arg=BASEIMAGE=maxtext_base_image
+      - --build-arg=PACKAGE_DIR=src
+      - -f=src/dependencies/dockerfiles/maxtext_runner.Dockerfile
+      - -t=asia-south1-docker.pkg.dev/zenteiq-lxp-1722918338008/maxtext-finetuning/maxtext:latest
+      - .
+images:
+  - 'asia-south1-docker.pkg.dev/zenteiq-lxp-1722918338008/maxtext-finetuning/maxtext:latest'
+timeout: 3600s
+options:
+  machineType: 'E2_HIGHCPU_32'
+  diskSizeGb: 200

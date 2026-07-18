@@ -156,3 +156,15 @@ gha-creds-*.json
 # vscode workspace
 maxtext.code-workspace
 maxtext_output/
+
+# local agent tooling (not part of maxtext)
+.claude/
+.agents/
+.gemini/
+.pi/
+.vscode/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+opencode.json
+.github/copilot-instructions.md
